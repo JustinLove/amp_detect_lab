@@ -5,6 +5,30 @@ require 'net/ssh'
 
 module RemoteRepo
   class GitHTTP
+    def self.scheme(url)
+      case url.scheme
+      when 'http'; 1.0
+      when 'https'; 1.0
+      when nil; 0.5
+      else; 0.0
+      end
+    end
+
+    def self.path(url)
+      case url.path
+      when /\.git$/; 1.0
+      else 0.5
+      end
+    end
+
+    def self.guess(path)
+      url = URI.parse(path)
+      scheme(url) * 0.5 + 
+        self.path(url) * 0.5
+    rescue URI::InvalidURIError
+      return 0.0
+    end
+
     # Standard HTTP server (Apache, etc)
     def self.test(path)
       begin
@@ -21,6 +45,28 @@ module RemoteRepo
   end
 
   class GitGit
+    def self.scheme(url)
+      case url.scheme
+      when 'git'; 1.0
+      when nil; 0.5 * path(url)
+      else; 0.0
+      end
+    end
+
+    def self.path(url)
+      case url.path
+      when /\.git$/; 1.0
+      else; 0.5
+      end
+    end
+
+    def self.guess(path)
+      url = URI.parse(path)
+      scheme(url)
+    rescue URI::InvalidURIError
+      return 0.0
+    end
+
     # git daemon --verbose --base-path=.
     # touch ac.g/git-daemon-export-ok
     def self.test(path)
@@ -47,14 +93,42 @@ module RemoteRepo
   end
 
   class GitSSH
-    def self.test(path)
-      return nil unless path.match(/(\w+)@(\w+):(\D.+)/)
+    def self.parse_uri(path)
+      return nil unless path.match(/([\w.]+)@([\w.]+):(\D.+)/)
       user, host, dir = $1, $2, $3
-      Net::SSH.start(host, user,
+      URI::Generic.new('ssh', user, host, 443, nil, dir, nil, nil, nil) 
+    rescue URI::InvalidURIError
+      return nil
+    end
+
+    def self.scheme(url)
+      case url.scheme
+      when 'ssh'; 1.0
+      when nil; 0.5
+      else; 0.0
+      end
+    end
+
+    def self.path(url)
+      case url.path
+      when /\.git$/; 1.0
+      else 0.5
+      end
+    end
+
+    def self.guess(path)
+      return 0.0 unless url = parse_uri(path)
+      scheme(url) * 0.5 + 
+        self.path(url) * 0.5
+    end
+
+    def self.test(path)
+      return nil unless url = parse_uri(path)
+      Net::SSH.start(url.host, url.user,
           :verbose => Logger::WARN,
           :auth_methods => ['publickey'],
           ) do |ssh|
-        ssh.exec("/opt/local/bin/git receive-pack #{dir}") do |ch, stream, data|
+        ssh.exec("/opt/local/bin/git receive-pack #{url.path}") do |ch, stream, data|
           if (stream == :stdout)
             ch.close
             return data.match(/ refs\/heads/)
@@ -66,6 +140,38 @@ module RemoteRepo
   end
 
   class MercurialHTTP
+    def self.scheme(url)
+      case url.scheme
+      when 'http'; 1.0
+      when 'https'; 1.0
+      when nil; 0.5
+      else; 0.0
+      end
+    end
+
+    def self.path(url)
+      case url.path
+      when /\.hg$/; 1.0
+      else 0.5
+      end
+    end
+
+    def self.host(url)
+      case url.host
+      when /bitbucket/; 1.0
+      else; 0.0
+      end
+    end
+
+    def self.guess(path)
+      url = URI.parse(path)
+      scheme(url) * 0.6 + 
+        self.path(url) * 0.1 +
+        host(url) * 0.3
+    rescue URI::InvalidURIError
+      return 0.0
+    end
+
     # hgweb or hg serve
     def self.test(path)
       begin
@@ -82,6 +188,37 @@ module RemoteRepo
   end
 
   class MercurialSSH
+    def self.scheme(url)
+      case url.scheme
+      when 'ssh'; 1.0
+      when nil; 0.5
+      else; 0.0
+      end
+    end
+
+    def self.path(url)
+      case url.path
+      when /\.hg$/; 1.0
+      else 0.5
+      end
+    end
+
+    def self.host(url)
+      case url.host
+      when /bitbucket/; 1.0
+      else; 0.0
+      end
+    end
+
+    def self.guess(path)
+      url = URI.parse(path)
+      scheme(url) * 0.6 + 
+        self.path(url) * 0.1 +
+        host(url) * 0.3
+    rescue URI::InvalidURIError
+      return 0.0
+    end
+
     def self.test(path)
       begin
         url = URI.parse(path)
@@ -110,19 +247,20 @@ module RemoteRepo
   class Unidentified
   end
 
+  REPOS = [
+    GitHTTP,
+    GitGit,
+    GitSSH,
+    MercurialHTTP,
+    MercurialSSH,
+  ]
+
   def self.guess(url)
-    case url
-    when /http.+\.git$/; GitHTTP
-    when /git@.+\.git$/; GitSSH
-    when /git:.+\.git$/; GitGit
-    when /http.+bitbucket/; MercurialHTTP
-    when /hg@bitbucket.org/; MercurialSSH
-    else nil
-    end
+    REPOS.sort_by {|repo| repo.guess(url)}.last
   end
 
   def self.interrogate(url)
-    [GitHTTP, GitGit, GitSSH, MercurialHTTP, MercurialSSH].each do |repo|
+    REPOS.each do |repo|
       return repo if repo.test(url)
     end
     return nil
@@ -134,6 +272,36 @@ module RemoteRepo
 end
 
 describe RemoteRepo do
+  context RemoteRepo::GitGit do
+    it 'gets the right scheme' do
+      RemoteRepo::GitGit.scheme(URI.parse('git://github.com/michaeledgar/amp_redux.git')).should == 1.0
+    end
+
+    it 'likes the path' do
+      RemoteRepo::GitGit.path(URI.parse('git://github.com/michaeledgar/amp_redux.git')).should == 1.0
+    end
+
+    it 'maximally rated' do
+      RemoteRepo::GitGit.guess('git://github.com/michaeledgar/amp_redux.git').should == 1.0
+    end
+  end
+
+  context RemoteRepo::GitSSH do
+    it 'parses uris' do
+      RemoteRepo::GitSSH.parse_uri('git@github.com:michaeledgar/bitbucket.git').should be_kind_of(URI)
+    end
+  end
+
+  context RemoteRepo::MercurialHTTP do
+    it 'likes the scheme' do
+      RemoteRepo::MercurialHTTP.scheme(URI.parse('https://JustinLove@bitbucket.org/JustinLove/amp')).should == 1.0
+    end
+
+    it 'is highly rated' do
+      RemoteRepo::MercurialHTTP.guess('https://JustinLove@bitbucket.org/JustinLove/amp').should > 0.75
+    end
+  end
+
   context "easily guessed names" do
     module RemoteRepo
       {
