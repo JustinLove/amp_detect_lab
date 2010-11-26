@@ -1,5 +1,6 @@
 require 'uri'
 require 'net/http'
+require 'socket'
 
 module RemoteRepo
   class GitHTTP
@@ -17,6 +18,16 @@ module RemoteRepo
   class GitGit
     # git daemon --verbose --base-path=.
     # touch ac.g/git-daemon-export-ok
+    def self.test(path)
+      url = URI.parse(path)
+      con = TCPSocket.open(url.host, 9418)
+      # 0039git-upload-pack /schacon/gitbook.git\0host=github.com\0
+      con.write("0029git-upload-pack /ac.g\0host=localhost\0")
+      select([con], nil, nil, 5)
+      con.read_nonblock(1024).match(/ HEAD\0/)
+    ensure
+      con.close if con
+    end
   end
 
   class GitSSH
@@ -39,7 +50,10 @@ module RemoteRepo
   end
 
   def self.interrogate(url)
-    GitHTTP.test(url) && GitHTTP
+    [GitHTTP, GitGit].each do |repo|
+      return repo if repo.test(url)
+    end
+    return nil
   end
 
   def self.pick(url)
@@ -71,8 +85,8 @@ describe RemoteRepo do
     module RemoteRepo
       {
         'http://localhost/~jlove/ac.g' => GitHTTP,
+        'git://localhost/ac.g' => GitGit,
         # InvalidURIError 'git@github.com:michaeledgar/amp_redux.git' => GitSSH,
-        # GitHTTP 'git://github.com/michaeledgar/amp_redux.git' => GitGit,
         # Connection reset by peer 'https://JustinLove@bitbucket.org/JustinLove/amp' => Mercurial,
         # nil 'ssh://hg@bitbucket.org/JustinLove/amp' => Mercurial,
       }
