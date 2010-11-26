@@ -1,12 +1,17 @@
 require 'uri'
 require 'net/http'
 require 'socket'
+require 'net/ssh'
 
 module RemoteRepo
   class GitHTTP
     # Standard HTTP server (Apache, etc)
     def self.test(path)
-      url = URI.parse(path + '/info/refs')
+      begin
+        url = URI.parse(path + '/info/refs')
+      rescue URI::InvalidURIError
+        return nil
+      end
       req = Net::HTTP::Get.new(url.path)
       res = Net::HTTP.start(url.host, url.port) {|http|
         http.request(req)
@@ -19,7 +24,11 @@ module RemoteRepo
     # git daemon --verbose --base-path=.
     # touch ac.g/git-daemon-export-ok
     def self.test(path)
-      url = URI.parse(path)
+      begin
+        url = URI.parse(path)
+      rescue URI::InvalidURIError
+        return nil
+      end
       con = TCPSocket.open(url.host, 9418)
       # 0039git-upload-pack /schacon/gitbook.git\0host=github.com\0
       # con.write("0029git-upload-pack /ac.g\0host=localhost\0")
@@ -34,6 +43,22 @@ module RemoteRepo
   end
 
   class GitSSH
+    def self.test(path)
+      return nil unless path.match(/(\w+)@(\w+):(\D.+)/)
+      user, host, dir = $1, $2, $3
+      Net::SSH.start(host, user,
+          :verbose => Logger::WARN,
+          :auth_methods => ['publickey'],
+          ) do |ssh|
+        ssh.exec("/opt/local/bin/git receive-pack #{dir}") do |ch, stream, data|
+          if (stream == :stdout)
+            ch.close
+            return data.match(/ refs\/heads/)
+          end
+        end
+      end
+      return nil
+    end
   end
 
   class Mercurial
@@ -53,7 +78,7 @@ module RemoteRepo
   end
 
   def self.interrogate(url)
-    [GitHTTP, GitGit].each do |repo|
+    [GitHTTP, GitGit, GitSSH].each do |repo|
       return repo if repo.test(url)
     end
     return nil
@@ -89,7 +114,7 @@ describe RemoteRepo do
       {
         'http://localhost/~jlove/ac.g' => GitHTTP,
         'git://localhost/ac.g' => GitGit,
-        # InvalidURIError 'git@github.com:michaeledgar/amp_redux.git' => GitSSH,
+        'jlove@localhost:Sites/ac.g' => GitSSH,
         # Connection reset by peer 'https://JustinLove@bitbucket.org/JustinLove/amp' => Mercurial,
         # nil 'ssh://hg@bitbucket.org/JustinLove/amp' => Mercurial,
       }
