@@ -39,6 +39,8 @@ module RemoteRepo
       con.read_nonblock(1024).match(/ HEAD\0/)
     rescue Errno::EAGAIN
       nil
+    rescue EOFError
+      nil
     ensure
       con.close if con
     end
@@ -80,6 +82,29 @@ module RemoteRepo
   end
 
   class MercurialSSH
+    def self.test(path)
+      begin
+        url = URI.parse(path)
+      rescue URI::InvalidURIError
+        return nil
+      end
+      Net::SSH.start(url.host, url.user,
+          :verbose => Logger::WARN,
+          :auth_methods => ['publickey'],
+          ) do |ssh|
+        ssh.open_channel do |channel|
+          channel.exec("/opt/local/bin/hg -R #{url.path} serve --stdio") do |chan, success|
+            abort "could not execute command" unless success
+            channel.send_data "hello\n"
+            chan.on_data do |ch, data|
+              ch.close
+              return data.match(/lookup/)
+            end
+          end
+        end
+      end
+      return nil
+    end
   end
 
   class Unidentified
@@ -97,7 +122,7 @@ module RemoteRepo
   end
 
   def self.interrogate(url)
-    [GitHTTP, GitGit, GitSSH, MercurialHTTP].each do |repo|
+    [GitHTTP, GitGit, GitSSH, MercurialHTTP, MercurialSSH].each do |repo|
       return repo if repo.test(url)
     end
     return nil
@@ -134,8 +159,8 @@ describe RemoteRepo do
         'http://localhost/~jlove/ac.g' => GitHTTP,
         'git://localhost/ac.g' => GitGit,
         'jlove@localhost:Sites/ac.g' => GitSSH,
-        'http://localhost:8000/' => MercurialHTTP
-        # nil 'ssh://hg@bitbucket.org/JustinLove/amp' => MercurialSSH,
+        'http://localhost:8000/' => MercurialHTTP,
+        'ssh://jlove@localhost/Users/jlove/Sites/amp' => MercurialSSH,
       }
     end.each do |url,repo|
       it "interrogates #{url} as #{repo}" do
