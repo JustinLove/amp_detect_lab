@@ -29,7 +29,7 @@ module RemoteRepo
       rescue URI::InvalidURIError
         return nil
       end
-      con = TCPSocket.open(url.host, 9418)
+      con = TCPSocket.open(url.host, url.port || 9418)
       # 0039git-upload-pack /schacon/gitbook.git\0host=github.com\0
       # con.write("0029git-upload-pack /ac.g\0host=localhost\0")
       request = "git-upload-pack #{url.path}\0host=#{url.host}\0"
@@ -37,6 +37,8 @@ module RemoteRepo
       con.write(request)
       select([con], nil, nil, 5)
       con.read_nonblock(1024).match(/ HEAD\0/)
+    rescue Errno::EAGAIN
+      nil
     ensure
       con.close if con
     end
@@ -61,7 +63,23 @@ module RemoteRepo
     end
   end
 
-  class Mercurial
+  class MercurialHTTP
+    # hgweb or hg serve
+    def self.test(path)
+      begin
+        url = URI.parse(path)
+      rescue URI::InvalidURIError
+        return nil
+      end
+      req = Net::HTTP::Get.new(url.path + '?cmd=capabilities')
+      res = Net::HTTP.start(url.host, url.port) {|http|
+        http.request(req)
+      }
+      res.body.match(/lookup/)
+    end
+  end
+
+  class MercurialSSH
   end
 
   class Unidentified
@@ -72,13 +90,14 @@ module RemoteRepo
     when /http.+\.git$/; GitHTTP
     when /git@.+\.git$/; GitSSH
     when /git:.+\.git$/; GitGit
-    when /bitbucket/; Mercurial
+    when /http.+bitbucket/; MercurialHTTP
+    when /hg@bitbucket.org/; MercurialSSH
     else nil
     end
   end
 
   def self.interrogate(url)
-    [GitHTTP, GitGit, GitSSH].each do |repo|
+    [GitHTTP, GitGit, GitSSH, MercurialHTTP].each do |repo|
       return repo if repo.test(url)
     end
     return nil
@@ -98,9 +117,9 @@ describe RemoteRepo do
         'git://github.com/michaeledgar/amp_redux.git' => GitGit,
         'git@github.com:michaeledgar/bitbucket.git' => GitSSH,
         'http://foo.bar/bitbucket.git' => GitHTTP,
-        'https://JustinLove@bitbucket.org/JustinLove/amp' => Mercurial,
-        'ssh://hg@bitbucket.org/JustinLove/amp' => Mercurial,
-        'ssh://hg@bitbucket.org/JustinLove/git' => Mercurial,
+        'https://JustinLove@bitbucket.org/JustinLove/amp' => MercurialHTTP,
+        'ssh://hg@bitbucket.org/JustinLove/amp' => MercurialSSH,
+        'ssh://hg@bitbucket.org/JustinLove/git' => MercurialSSH,
       }
     end.each do |url,repo|
       it "guesses #{url} as #{repo}" do
@@ -115,8 +134,8 @@ describe RemoteRepo do
         'http://localhost/~jlove/ac.g' => GitHTTP,
         'git://localhost/ac.g' => GitGit,
         'jlove@localhost:Sites/ac.g' => GitSSH,
-        # Connection reset by peer 'https://JustinLove@bitbucket.org/JustinLove/amp' => Mercurial,
-        # nil 'ssh://hg@bitbucket.org/JustinLove/amp' => Mercurial,
+        'http://localhost:8000/' => MercurialHTTP
+        # nil 'ssh://hg@bitbucket.org/JustinLove/amp' => MercurialSSH,
       }
     end.each do |url,repo|
       it "interrogates #{url} as #{repo}" do
