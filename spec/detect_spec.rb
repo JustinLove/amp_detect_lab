@@ -333,20 +333,24 @@ describe RemoteRepo do
         'ssh://jlove@localhost/Users/jlove/Sites/amp' => MercurialSSH,
       }
     end.each do |url,repo|
-      RemoteRepo::REPOS.each do |candidate|
-        if (candidate == repo)
-          it "#{candidate} accepts #{url}" do
-            candidate.test(url).should be
-          end
-        else
-          it "#{candidate} rejects #{url}" do
-            candidate.test(url).should_not be
+      context url do
+        RemoteRepo::REPOS.each do |candidate|
+          context candidate do
+            if (candidate == repo)
+              it "accepted" do
+                candidate.test(url).should be
+              end
+            else
+              it "rejected" do
+                candidate.test(url).should_not be
+              end
+            end
           end
         end
-      end
 
-      it "interrogates #{url} as #{repo}" do
-        RemoteRepo.interrogate(url).should == repo
+        it "interrogates as #{repo}" do
+          RemoteRepo.interrogate(url).should == repo
+        end
       end
     end
   end
