@@ -22,7 +22,10 @@ module RemoteRepo
       url = URI.parse(path)
       con = TCPSocket.open(url.host, 9418)
       # 0039git-upload-pack /schacon/gitbook.git\0host=github.com\0
-      con.write("0029git-upload-pack /ac.g\0host=localhost\0")
+      # con.write("0029git-upload-pack /ac.g\0host=localhost\0")
+      request = "git-upload-pack #{url.path}\0host=#{url.host}\0"
+      request = "%0.4x" % (request.size + 4) + request
+      con.write(request)
       select([con], nil, nil, 5)
       con.read_nonblock(1024).match(/ HEAD\0/)
     ensure
