@@ -241,6 +241,8 @@ module RemoteRepo
         end
       end
       return nil
+    rescue Net::SSH::AuthenticationFailed
+      return nil
     end
   end
 
@@ -331,6 +333,18 @@ describe RemoteRepo do
         'ssh://jlove@localhost/Users/jlove/Sites/amp' => MercurialSSH,
       }
     end.each do |url,repo|
+      RemoteRepo::REPOS.each do |candidate|
+        if (candidate == repo)
+          it "#{candidate} accepts #{url}" do
+            candidate.test(url).should be
+          end
+        else
+          it "#{candidate} rejects #{url}" do
+            candidate.test(url).should_not be
+          end
+        end
+      end
+
       it "interrogates #{url} as #{repo}" do
         RemoteRepo.interrogate(url).should == repo
       end
