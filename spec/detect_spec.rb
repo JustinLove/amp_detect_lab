@@ -225,6 +225,7 @@ module RemoteRepo
       rescue URI::InvalidURIError
         return nil
       end
+      return nil unless url.scheme == 'ssh' || url.scheme.nil?
       Net::SSH.start(url.host, url.user,
           :verbose => Logger::WARN,
           :auth_methods => ['publickey'],
