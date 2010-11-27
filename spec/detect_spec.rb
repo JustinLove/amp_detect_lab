@@ -2,7 +2,8 @@ require 'uri'
 require 'net/http'
 require 'socket'
 require 'net/ssh'
-require 'webrick'
+
+puts "Did you run 'rake setup' and 'rake server:xxx' ?"
 
 def abs_webroot
   File.join(File.dirname(File.dirname(__FILE__)), 'webroot')
