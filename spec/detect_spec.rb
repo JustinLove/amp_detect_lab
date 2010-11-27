@@ -2,6 +2,7 @@ require 'uri'
 require 'net/http'
 require 'socket'
 require 'net/ssh'
+require 'webrick'
 
 module RemoteRepo
   class GitHTTP
@@ -41,6 +42,8 @@ module RemoteRepo
         http.request(req)
       }
       res.body.match(/refs\/heads/)
+    rescue Errno::ECONNREFUSED
+      return nil
     end
   end
 
@@ -84,6 +87,8 @@ module RemoteRepo
       select([con], nil, nil, 5)
       con.read_nonblock(1024).match(/ HEAD\0/)
     rescue Errno::EAGAIN
+      nil
+    rescue Errno::ECONNREFUSED
       nil
     rescue EOFError
       nil
@@ -184,6 +189,8 @@ module RemoteRepo
         http.request(req)
       }
       res.body.match(/lookup/)
+    rescue Errno::ECONNREFUSED
+      return nil
     end
   end
 
@@ -335,7 +342,7 @@ describe RemoteRepo do
   context "Server interrogation" do
     module RemoteRepo
       {
-        'http://localhost/~jlove/ac.g' => GitHTTP,
+        'http://localhost:8080/ac.g' => GitHTTP,
         'git://localhost/ac.g' => GitGit,
         'jlove@localhost:Sites/ac.g' => GitSSH,
         'http://localhost:8000/' => MercurialHTTP,
