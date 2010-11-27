@@ -4,6 +4,18 @@ require 'socket'
 require 'net/ssh'
 require 'webrick'
 
+def abs_webroot
+  File.join(File.dirname(File.dirname(__FILE__)), 'webroot')
+end
+
+def rel_webroot
+  abs_webroot.gsub(File.expand_path('~'), '')[1..-1]
+end
+
+def user
+  ENV['USER']
+end
+
 module RemoteRepo
   class GitHTTP
     def self.scheme(url)
@@ -71,7 +83,7 @@ module RemoteRepo
     end
 
     # git daemon --verbose --base-path=.
-    # touch ac.g/git-daemon-export-ok
+    # touch detect.g/git-daemon-export-ok
     def self.test(path)
       begin
         url = URI.parse(path)
@@ -342,11 +354,11 @@ describe RemoteRepo do
   context "Server interrogation" do
     module RemoteRepo
       {
-        'http://localhost:8080/ac.g' => GitHTTP,
-        'git://localhost/ac.g' => GitGit,
-        'jlove@localhost:Sites/ac.g' => GitSSH,
+        'http://localhost:8080/detect.g' => GitHTTP,
+        'git://localhost/detect.g' => GitGit,
+        "#{user}@localhost:#{rel_webroot}/detect.g" => GitSSH,
         'http://localhost:8000/' => MercurialHTTP,
-        'ssh://jlove@localhost/Users/jlove/Sites/amp' => MercurialSSH,
+        "ssh://#{user}@localhost#{abs_webroot}/amp" => MercurialSSH,
       }
     end.each do |url,repo|
       context url do
