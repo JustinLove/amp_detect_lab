@@ -257,19 +257,19 @@ module RemoteRepo
     MercurialSSH,
   ]
 
+  def self.sort(url)
+    REPOS.sort_by {|repo| repo.guess(url)}.reverse!
+  end
+
   def self.guess(url)
-    REPOS.sort_by {|repo| repo.guess(url)}.last
+    sort(url).first
   end
 
   def self.interrogate(url)
-    REPOS.each do |repo|
+    sort(url).each do |repo|
       return repo if repo.test(url)
     end
-    return nil
-  end
-
-  def self.pick(url)
-    (guess(url) || interrogate(url) || Unidentified).new
+    return Unidentified
   end
 end
 
