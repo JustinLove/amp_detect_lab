@@ -275,32 +275,40 @@ end
 
 describe RemoteRepo do
   context RemoteRepo::GitGit do
+    let(:path) {'git://github.com/michaeledgar/amp_redux.git'}
+    let(:url) {URI.parse(path)}
+
     it 'gets the right scheme' do
-      RemoteRepo::GitGit.scheme(URI.parse('git://github.com/michaeledgar/amp_redux.git')).should == 1.0
+      RemoteRepo::GitGit.scheme(url).should == 1.0
     end
 
     it 'likes the path' do
-      RemoteRepo::GitGit.path(URI.parse('git://github.com/michaeledgar/amp_redux.git')).should == 1.0
+      RemoteRepo::GitGit.path(url).should == 1.0
     end
 
     it 'maximally rated' do
-      RemoteRepo::GitGit.guess('git://github.com/michaeledgar/amp_redux.git').should == 1.0
+      RemoteRepo::GitGit.guess(path).should == 1.0
     end
   end
 
   context RemoteRepo::GitSSH do
+    let(:path) {'git@github.com:michaeledgar/bitbucket.git'}
+
     it 'parses uris' do
-      RemoteRepo::GitSSH.parse_uri('git@github.com:michaeledgar/bitbucket.git').should be_kind_of(URI)
+      RemoteRepo::GitSSH.parse_uri(path).should be_kind_of(URI)
     end
   end
 
   context RemoteRepo::MercurialHTTP do
+    let(:path) {'https://JustinLove@bitbucket.org/JustinLove/amp'}
+    let(:url) {URI.parse(path)}
+
     it 'likes the scheme' do
-      RemoteRepo::MercurialHTTP.scheme(URI.parse('https://JustinLove@bitbucket.org/JustinLove/amp')).should == 1.0
+      RemoteRepo::MercurialHTTP.scheme(url).should == 1.0
     end
 
     it 'is highly rated' do
-      RemoteRepo::MercurialHTTP.guess('https://JustinLove@bitbucket.org/JustinLove/amp').should > 0.75
+      RemoteRepo::MercurialHTTP.guess(path).should > 0.75
     end
   end
 
